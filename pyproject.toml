@@ -1,0 +1,51 @@
+[project]
+name = "example"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.17.1",
+    "asyncpg>=0.30.0",
+    "bcrypt>=5.0.0",
+    "dynaconf>=3.2.12",
+    "email-validator>=2.3.0",
+    "greenlet>=3.2.4",
+    "litestar[jwt]>=2.18.0",
+    "sqlalchemy[asyncio]>=2.0.44",
+    "structlog>=25.5.0",
+    "uvicorn>=0.38.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "ruff>=0.15.4",
+]
+
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+preview = true
+
+select = ["ALL"]
+ignore = [
+    "D",                           # Docstring
+    "DOC",                         # Docstring
+    "CPY",                         # Copyright
+    "RUF001", "RUF002", "RUF003",  # Contains CYRILLIC LETTER Did you mean LATIN LETTER
+    "PLC0415",                     # `import` should be at the top-level of a file
+    "B903",                        # Class could be dataclass or namedtuple
+    "ANN401",                      # Dynamically typed expressions (typing.Any) are disallowed
+    "PLR6301",                     # Method `auth` could be a function, class method, or static method
+]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ['pydantic.mypy']

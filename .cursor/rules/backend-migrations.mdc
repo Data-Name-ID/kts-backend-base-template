@@ -1,0 +1,36 @@
+---
+description: Backend - Правила работы с миграциями Alembic
+globs: "app/**/migrations/**/*.py,*/app/**/migrations/**/*.py,app/**/models/**/*.py,*/app/**/models/**/*.py,alembic.ini"
+---
+
+# Миграции
+
+## 1. Когда менять миграции
+
+Если меняется схема БД (колонки, индексы, таблицы, FK):
+
+- Обновить SQLAlchemy-модели в `app/<domain>/models.py`
+- Создать миграцию: `uv run alembic revision --autogenerate -m "<message>"`
+- Миграции хранятся в `app/core/models/migrations/versions/`
+
+## 2. Требования к миграции
+
+- В `upgrade()` должны быть все изменения схемы
+- В `downgrade()` должен быть рабочий обратный сценарий
+- Для изменений enum учитывать локальный паттерн проекта (ручной alter/sync helper) и rollback
+- Проверять, что миграция идемпотентна в ожидаемом порядке применения
+- Не оставлять авто-сгенерированный код без ревью и корректировок
+
+## 3. Проверка локально
+
+- Применение миграций: `uv run alembic upgrade head`
+- Откат миграции: `uv run alembic downgrade -1`
+- Просмотр истории: `uv run alembic history`
+
+## 4. Практика
+
+- Не редактировать уже применённые миграции
+- Автосгенерацию всегда проверять вручную перед применением
+- Имена индексов/constraint соответствуют naming_convention из `BaseModel` (`app/core/db.py`)
+- Следить, чтобы слой данных (`accessor`) был совместим с новой схемой
+- Для data migration использовать `op.execute(...)` и учитывать rollback-сценарий

@@ -1,0 +1,79 @@
+---
+description: Backend - Правила добавления нового API-эндпоинта
+globs: "app/**/*.py,*/app/**/*.py"
+---
+
+# Добавление API-эндпоинта
+
+## 1. Выбор локального паттерна
+
+В проекте принята структура `app/<domain>/`:
+
+- `views.py` — контроллеры с endpoint-методами
+- `schemas.py` — request/response контракты (`msgspec.Struct`)
+- `urls.py` — функция `get_handlers()` для подключения контроллеров в `main.py`
+- `accessor.py` — слой доступа к данным
+- `models.py` — SQLAlchemy-модели домена
+- `domain.py` — доменные объекты и DTO
+- `errors.py` — доменные HTTP-ошибки (добавлять при необходимости)
+
+Добавлять endpoint в существующий домен, повторяя его структуру.
+
+## 2. Контракты DTO
+
+- DTO — `msgspec.Struct` с `kw_only=True`
+- Request: `class SomeRequest(Struct, kw_only=True): ...`
+- Response: оборачивать в `OkResponse` из `app.core.schemas`
+- Для валидации входных данных использовать `app.core.validators` и вызывать через `__post_init__`
+- Не смешивать разные DTO-подходы внутри одного домена без причины
+
+## 3. Шаблон контроллера
+
+- Наследовать от `litestar.Controller`; задавать `path` и `tags` на уровне класса
+- Декораторы: `@get`, `@post`, `@patch`, `@delete` с явным `path=...` и `status_code=...`
+- `store: Store` получать через DI (передаётся автоматически через `InitPlugin`), не инстанциировать вручную
+- Для публичных ручек добавлять `exclude_from_auth=True` в декоратор
+- Доступ к данным только через `store.<domain>` (accessor), не писать SQL в контроллере
+- Держать endpoint тонким: при наличии бизнес-логики выносить в manager
+
+Пример:
+
+```python
+class SomeController(Controller):
+    path = "/api/some"
+    tags = ("some",)
+
+    @post(path="action", status_code=HTTP_200_OK)
+    async def action(self, store: Store, data: SomeRequest) -> OkResponse:
+        result = await store.some.do_something(data.field)
+        return OkResponse(data={"id": result})
+```
+
+## 3.1 RESTful-конвенции
+
+- Предпочитать resource-oriented пути: `/objects/`, `/objects/{object_id}/items/`, а не RPC-стиль (`/createObject`, `/doAction`)
+- Для коллекции использовать `GET /resource/` (list) и `POST /resource/` (create)
+- Для элемента использовать `GET /resource/{id}/`, `PUT/PATCH /resource/{id}/`, `DELETE /resource/{id}/`
+- Для нестандартного действия над ресурсом сначала проверить, можно ли выразить его через состояние/подресурс; action-роуты добавлять только при явной необходимости
+- Возвращать статус-коды по REST-семантике: `201` для create, `200/204` для update/delete, `404` для not found, `409` для конфликтов
+
+## 3.2 Паттерны проектирования
+
+- Применять `Service Layer` для бизнес-логики endpoint.
+- Применять `Accessor` для всех операций с данными.
+- Применять `Strategy` для сменяемых алгоритмов внутри endpoint-сценария.
+- Применять `Adapter`/`Factory` для внешних интеграций, чтобы не связывать endpoint с внешним API напрямую.
+
+## 4. Ошибки и доступы
+
+- Использовать `litestar.exceptions`: `NotFoundException`, `PermissionDeniedException`, `ValidationException`, `HTTPException`
+- Бизнес-ошибки из accessor/manager маппить в HTTP-ошибки в контроллере
+- Для публичных ручек явно указывать `exclude_from_auth=True`
+- При добавлении нового контроллера зарегистрировать его в `urls.py` соответствующего домена
+
+## 5. Что проверить после добавления
+
+- `uv run ruff check .` и `uv run mypy .`
+- Новый контроллер подключён в `urls.py` → `get_handlers()`
+- Новый домен/accessor подключён в `Store` в `app/core/store.py`
+- При добавлении нового accessor — добавить его в `Store.__init__`

@@ -1,0 +1,42 @@
+---
+description: Backend - Оформление HTTP-ошибок и их видимость в OpenAPI
+globs: "app/**/*.py,*/app/**/*.py"
+---
+
+# HTTP ошибки и OpenAPI
+
+## 1. Базовый стандарт ошибок
+
+- Использовать стандартные исключения Litestar: `NotFoundException`, `PermissionDeniedException`, `ValidationException`, `HTTPException` из `litestar.exceptions`
+- Доменные ошибки (validation/business) маппить в HTTP-исключения Litestar в контроллере
+- Если есть доменный `errors.py`, наследовать ошибки от `HTTPException` с фиксированным `status_code` и `detail`
+
+## 2. Документация ошибок в endpoint-декораторах
+
+- Каждый endpoint должен явно декларировать ожидаемые error-responses в OpenAPI (`responses`/`response_model`/эквивалент проекта).
+- В декларации указывать:
+  - HTTP-статус ошибки
+  - schema error-envelope
+  - доменный `code` (как минимум в примерах или описании)
+- Для success и error использовать один и тот же механизм описания ответов по всему проекту.
+- Если есть helper для сборки success+error responses, использовать его; если нет, придерживаться единого ручного шаблона.
+
+## 3. Маппинг бизнес-ошибок
+
+- Бизнес-ошибки из accessor/manager маппить в HTTP-ошибки в контроллере (`raise NotFoundException(...) from exc`)
+- Не пробрасывать сырые бизнес-исключения (`ValueError` и др.) в API-слой без маппинга
+- Ошибки валидации в DTO (`__post_init__`) перехватываются Litestar автоматически и возвращаются как `400`
+
+## 4. Принцип видимости ошибок в OpenAPI
+
+- Документация должна отражать реальные ошибки, которые endpoint может вернуть.
+- Клиент (frontend/SDK/интегратор) должен понимать ожидаемые статусы и `code` без чтения исходников.
+- Контракт ошибки должен быть переиспользуемым и одинаковым между endpoint-ами.
+
+## 5. Чеклист перед финализацией endpoint
+
+- Все HTTP-ошибки endpoint вынесены в доменный `errors.py`
+- В OpenAPI endpoint перечислены все ожидаемые error-responses
+- Все перечисленные ошибки действительно могут быть выброшены кодом endpoint
+- Для каждой runtime-ошибки есть соответствующая запись в OpenAPI (статус + code + schema)
+- Коды/сообщения/формат envelope консистентны по всему API

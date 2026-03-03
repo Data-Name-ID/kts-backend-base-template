@@ -1,0 +1,62 @@
+---
+description: Backend - Правила для domain/db/repo-accessor/manager слоев
+globs: "app/**/*.py,*/app/**/*.py"
+---
+
+# Domain / DB / Repo-Accessor / Manager
+
+## 1. Контракты и DTO
+
+- API-контракты держать в `<domain>/schemas.py`
+- DTO: `msgspec.Struct` с `kw_only=True`; для замороженных (неизменяемых) добавлять `frozen=True`
+- Domain-объекты (не ORM) держать в `<domain>/domain.py`
+- Валидацию входных данных выносить в `__post_init__`, используя helpers из `app.core.validators`
+- ORM-модель не должна протекать напрямую в публичный API без DTO-маппинга
+
+## 2. DB-модели `<domain>/models.py`
+
+- Наследовать от `BaseModel` из `app.core.db`
+- Колонки задавать через `Mapped[...]` + `mapped_column(...)`
+- Для `id` использовать `IDMixin` (или `BigIDMixin`) из `app.core.models.mixins`
+- Для временных полей использовать `CreatedAtMixin` / `UpdatedAtMixin` из `app.core.models.mixins`; время выставляется через `func.now()` из SQLAlchemy
+- Длины строк брать из `StaticConfig` (например, `StaticConfig.NAME_STR_LENGTH`)
+- Индексы/constraints задавать явно (`index=True`, `UniqueConstraint`, `ForeignKey(..., ondelete=...)`)
+
+## 3. Слой доступа к данным `<domain>/accessor.py`
+
+- Наследовать от `BaseAccessor` из `app.core.accessors`; доступ к хранилищу через `self.store.db.<method>`
+- SQL и persistence-логику держать в этом слое, не в контроллере
+- Публичные методы типизировать явно
+- Использовать SQLAlchemy async (`insert`, `select`, `update`, `delete`) с `postgresql.insert` для upsert
+- Для доступа к asyncpg/SQLAlchemy-сессии использовать `self.store.db.execute`, `self.store.db.scalar_one`, `self.store.db.scalars` и др.
+
+## 4. Менеджеры как сервисный слой `<domain>/manager.py`
+
+- Добавлять только при наличии сложной бизнес-оркестрации; для простых CRUD-операций достаточно accessor
+- Менеджер объединяет операции слоя данных и бизнес-правила
+- Не переносить SQL в manager, если это логика data-access слоя
+- Бизнес-ошибки оформлять отдельными exception-классами менеджера; маппить в HTTP-ошибки в контроллере
+- Добавлять менеджер в `Store` аналогично accessor-ам
+
+## 4.1 Паттерны для поддерживаемости
+
+- `Accessor` использовать как boundary для persistence, чтобы упростить смену источников данных.
+- `Service Layer` использовать как boundary для бизнес-правил, чтобы endpoint оставался тонким.
+- `Unit of Work`/транзакционный boundary использовать для атомарных мультишаговых операций.
+- `Strategy` использовать для вариантной бизнес-логики вместо разрастания `if/else`.
+- `Factory` использовать для выбора/создания адаптеров внешних интеграций.
+- `Adapter` использовать для нормализации контрактов внешних API внутри домена.
+
+## 5. DI-регистрация и экспорт
+
+При добавлении нового accessor:
+
+1. Создать `<domain>/accessor.py` с классом, наследующим `BaseAccessor`
+2. Добавить его в `app/core/store.py` в `Store.__init__`: `self.<domain> = DomainAccessor(self)`
+3. Использовать через `store.<domain>` в endpoint-методах
+
+## 6. Чеклист
+
+- ORM-модель не протекла напрямую в публичный API без DTO-маппинга
+- Новый accessor подключён в `Store`
+- `uv run ruff check .` и `uv run mypy .` проходят без ошибок
